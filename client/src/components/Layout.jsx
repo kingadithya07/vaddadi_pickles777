@@ -12,12 +12,14 @@ function Navbar() {
   return (
     <header className="nav">
       <div className="container nav-inner">
-        <Link to="/" className="brand" onClick={close}>
-          <img src="/logo.svg" alt="" />
-          <span>
-            Vaddadi Pickles
-            <small>Since 1978 · Rajahmundry</small>
-          </span>
+        <Link to="/" className="brand" onClick={close} aria-label="Vaddadi Pickles — home">
+          <img
+            className="brand-logo"
+            src="/brand/vaddadi-mark.png"
+            alt="Vaddadi Pickles"
+            width="150"
+            height="48"
+          />
         </Link>
 
         <nav className={`nav-links ${open ? 'open' : ''}`}>
@@ -82,8 +84,15 @@ function Footer() {
       <div className="container">
         <div className="footer-grid">
           <div>
-            <h4>Vaddadi Pickles</h4>
-            <p className="small" style={{ lineHeight: 1.75 }}>
+            <img
+              className="footer-logo"
+              src="/brand/vaddadi-logo.png"
+              alt="Vaddadi Pickles — Sujathanagar, Visakhapatnam"
+              width="240"
+              height="240"
+              loading="lazy"
+            />
+            <p className="small" style={{ lineHeight: 1.75, marginTop: 14 }}>
               Three generations of Godavari pickling. Sun-cured, stone-ground and hand-packed in
               small batches — never a preservative, never a shortcut.
             </p>
@@ -112,16 +121,16 @@ function Footer() {
           <div>
             <h4>Reach us</h4>
             <div className="stack gap-8 small">
-              <span>12-4-19, Danavaipeta, Rajahmundry</span>
-              <span>Andhra Pradesh 533101</span>
-              <span>+91 90000 12345</span>
+              <span>Sujathanagar, Visakhapatnam</span>
+              <span>Andhra Pradesh</span>
+              <a href="tel:+918008129309">Cell: 8008129309</a>
+              <a href="tel:+919885192948">Cell: 9885192948</a>
               <span>hello@vaddadipickles.in</span>
             </div>
           </div>
         </div>
         <div className="footer-bottom">
           <span>© {new Date().getFullYear()} Vaddadi Pickles. All rights reserved.</span>
-          <span>Delivery PIN codes verified via India Post (api.postalpincode.in)</span>
         </div>
       </div>
     </footer>

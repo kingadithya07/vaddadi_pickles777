@@ -57,8 +57,7 @@ export default function Login() {
       <div className="auth-form">
         <div className="auth-card">
           <Link to="/" className="brand" style={{ marginBottom: 4 }}>
-            <img src="/logo.svg" alt="" />
-            <span>Vaddadi Pickles<small>Since 1978 · Rajahmundry</small></span>
+            <img className="brand-logo" src="/brand/vaddadi-mark.png" alt="Vaddadi Pickles" width="170" height="54" />
           </Link>
 
           {isAdminLogin ? (
