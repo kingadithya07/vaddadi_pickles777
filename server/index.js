@@ -3,7 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { get, save, resetDb, uid } from './db.js';
-import { pincodeFallback } from './data/seed.js';
+import { PINCODES, OFFICE_INDEX } from './data/pincodes.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -184,6 +184,9 @@ app.delete('/api/products/:id', auth(), adminOnly, (req, res) => {
 
 /* ---------------------------------------------------------------- addresses */
 function normaliseAddress(body) {
+  // `locality` is the India Post post-office name chosen for the PIN; `city` mirrors
+  // it so every existing view (orders, admin, invoices) keeps working unchanged.
+  const locality = body.locality || body.city || '';
   return {
     label: body.label || 'Home',
     name: body.name || '',
@@ -192,7 +195,8 @@ function normaliseAddress(body) {
     line2: body.line2 || '',
     landmark: body.landmark || '',
     pincode: String(body.pincode || ''),
-    city: body.city || '',
+    locality,
+    city: locality,
     district: body.district || '',
     state: body.state || '',
   };
@@ -201,7 +205,9 @@ function normaliseAddress(body) {
 app.get('/api/addresses', auth(), (req, res) => res.json({ addresses: req.user.addresses || [] }));
 
 app.post('/api/addresses', auth(), (req, res) => {
-  const body = req.body || {};
+  const body = { ...(req.body || {}) };
+  // accept either `locality` (India Post post-office name) or the legacy `city`
+  body.city = body.city || body.locality;
   const missing = ['name', 'phone', 'line1', 'pincode', 'city', 'state'].filter((f) => !body[f]);
   if (missing.length) return res.status(400).json({ error: `Missing: ${missing.join(', ')}` });
   if (!/^\d{6}$/.test(String(body.pincode)))
@@ -249,64 +255,171 @@ app.delete('/api/addresses/:id', auth(), (req, res) => {
 });
 
 /* ------------------------------------------------------- Indian PIN code API */
-// Proxies https://api.postalpincode.in (India Post). Falls back to a bundled
-// offline table when the host has no outbound internet access.
+// Data source: https://api.postalpincode.in (the JSON API behind postalpincode.in),
+// which serves official India Post records. A PIN usually covers SEVERAL post
+// offices / localities — we return all of them so the customer can pick their exact
+// area from a dropdown instead of typing it.
+//
+// Resolution order: in-memory cache -> live India Post API -> bundled offline snapshot.
+
 const pinCache = new Map();
+const PIN_TTL = 1000 * 60 * 60 * 24; // 24h
 
-app.get('/api/pincode/:pin', async (req, res) => {
-  const pin = String(req.params.pin || '');
-  if (!/^\d{6}$/.test(pin)) return res.status(400).json({ error: 'PIN code must be 6 digits' });
-  if (pinCache.has(pin)) return res.json(pinCache.get(pin));
+const cacheGet = (key) => {
+  const hit = pinCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PIN_TTL) {
+    pinCache.delete(key);
+    return null;
+  }
+  return hit.value;
+};
+const cacheSet = (key, value) => pinCache.set(key, { at: Date.now(), value });
 
-  const buildFallback = () => {
-    const f = pincodeFallback[pin];
-    if (!f) return null;
-    return {
-      pincode: pin,
-      city: f.district,
-      district: f.district,
-      state: f.state,
-      offices: [{ name: f.office, branchType: 'Head Post Office', delivery: 'Delivery' }],
-      source: 'offline-fallback',
-    };
-  };
+// India Post returns names with stray whitespace and "NA" placeholders.
+const clean = (v) => {
+  const s = String(v ?? '').trim();
+  return !s || s.toUpperCase() === 'NA' ? '' : s;
+};
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    const r = await fetch(`https://api.postalpincode.in/pincode/${pin}`, {
-      signal: controller.signal,
+const isDelivery = (o) => /^delivery$/i.test(clean(o.delivery || o.DeliveryStatus));
+
+// Shape one post office record into our own flat, UI-friendly form.
+const shapeOffice = (o, pincode) => ({
+  name: clean(o.Name ?? o.name),
+  branchType: clean(o.BranchType ?? o.branchType),
+  delivery: clean(o.DeliveryStatus ?? o.delivery),
+  district: clean(o.District ?? o.district),
+  division: clean(o.Division ?? o.division),
+  block: clean(o.Block ?? o.block),
+  state: clean(o.State ?? o.state),
+  circle: clean(o.Circle ?? o.circle),
+  pincode: clean(o.Pincode ?? o.pincode ?? pincode),
+});
+
+// Build the response payload the frontend consumes.
+function buildPayload(pin, rawOffices, source) {
+  const offices = rawOffices
+    .map((o) => shapeOffice(o, pin))
+    .filter((o) => o.name)
+    // delivery post offices first, then alphabetically — the head/delivery office
+    // is the most likely "city" for the address.
+    .sort((a, b) => {
+      const d = Number(isDelivery(b)) - Number(isDelivery(a));
+      if (d) return d;
+      const h = Number(/head/i.test(b.branchType)) - Number(/head/i.test(a.branchType));
+      if (h) return h;
+      return a.name.localeCompare(b.name);
     });
-    clearTimeout(timer);
+
+  if (!offices.length) return null;
+
+  const primary = offices[0];
+  return {
+    pincode: pin,
+    // "city" is the town/block the PIN belongs to; district/state come from India Post.
+    city: primary.block || primary.district,
+    district: primary.district,
+    state: primary.state,
+    division: primary.division,
+    circle: primary.circle,
+    // every locality sharing this PIN — this is what fills the City/Locality dropdown
+    offices,
+    localities: offices.map((o) => o.name),
+    deliverable: offices.some(isDelivery),
+    count: offices.length,
+    source,
+  };
+}
+
+async function fetchFromIndiaPost(url, timeoutMs = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: { accept: 'application/json', 'user-agent': 'vaddadi-pickles/1.0' },
+    });
+    if (!r.ok) return null;
     const json = await r.json();
     const entry = Array.isArray(json) ? json[0] : null;
-    if (entry?.Status === 'Success' && entry.PostOffice?.length) {
-      const offices = entry.PostOffice;
-      const payload = {
-        pincode: pin,
-        city: offices[0].Block && offices[0].Block !== 'NA' ? offices[0].Block : offices[0].District,
-        district: offices[0].District,
-        state: offices[0].State,
-        offices: offices.slice(0, 12).map((o) => ({
-          name: o.Name,
-          branchType: o.BranchType,
-          delivery: o.DeliveryStatus,
-        })),
-        source: 'api.postalpincode.in',
-      };
-      pinCache.set(pin, payload);
+    if (entry?.Status === 'Success' && Array.isArray(entry.PostOffice) && entry.PostOffice.length) {
+      return entry.PostOffice;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// GET /api/pincode/:pin -> every locality served by that PIN code
+app.get('/api/pincode/:pin', async (req, res) => {
+  const pin = String(req.params.pin || '').trim();
+  if (!/^\d{6}$/.test(pin))
+    return res.status(400).json({ error: 'PIN code must be exactly 6 digits' });
+
+  const cached = cacheGet(`pin:${pin}`);
+  if (cached) return res.json({ ...cached, cached: true });
+
+  const live = await fetchFromIndiaPost(`https://api.postalpincode.in/pincode/${pin}`);
+  if (live) {
+    const payload = buildPayload(pin, live, 'api.postalpincode.in');
+    if (payload) {
+      cacheSet(`pin:${pin}`, payload);
       return res.json(payload);
     }
-    const fb = buildFallback();
-    if (fb) return res.json(fb);
-    return res.status(404).json({ error: 'No records found for this PIN code' });
-  } catch {
-    const fb = buildFallback();
-    if (fb) return res.json(fb);
-    return res
-      .status(503)
-      .json({ error: 'India Post PIN service is unreachable right now. Please enter city and state manually.' });
   }
+
+  const offline = PINCODES[pin];
+  if (offline) {
+    const payload = buildPayload(pin, offline, 'offline-snapshot');
+    cacheSet(`pin:${pin}`, payload);
+    return res.json(payload);
+  }
+
+  return res.status(404).json({
+    error: `No India Post records found for PIN ${pin}. Please check the code or type your area manually.`,
+  });
+});
+
+// GET /api/postoffice/:name -> reverse lookup, find the PIN from a locality name.
+// Lets a customer type "Danavaipeta" and get PIN 533103 filled in for them.
+app.get('/api/postoffice/:name', async (req, res) => {
+  const name = String(req.params.name || '').trim();
+  if (name.length < 3)
+    return res.status(400).json({ error: 'Enter at least 3 characters of the area name' });
+
+  const key = `po:${name.toLowerCase()}`;
+  const cached = cacheGet(key);
+  if (cached) return res.json({ ...cached, cached: true });
+
+  const live = await fetchFromIndiaPost(
+    `https://api.postalpincode.in/postoffice/${encodeURIComponent(name)}`
+  );
+
+  let matches;
+  if (live) {
+    matches = live.map((o) => shapeOffice(o)).filter((o) => o.name && o.pincode);
+  } else {
+    const needle = name.toLowerCase();
+    matches = OFFICE_INDEX.filter((o) => o.name.toLowerCase().includes(needle)).map((o) =>
+      shapeOffice(o, o.pincode)
+    );
+  }
+
+  if (!matches.length)
+    return res.status(404).json({ error: `No post office matched "${name}"` });
+
+  const payload = {
+    query: name,
+    count: matches.length,
+    results: matches.slice(0, 25),
+    source: live ? 'api.postalpincode.in' : 'offline-snapshot',
+  };
+  cacheSet(key, payload);
+  res.json(payload);
 });
 
 /* ------------------------------------------------------------------- orders */

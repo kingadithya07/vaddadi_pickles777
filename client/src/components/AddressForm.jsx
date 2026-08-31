@@ -11,78 +11,141 @@ const blank = {
   landmark: '',
   pincode: '',
   city: '',
+  locality: '',
   district: '',
   state: '',
   isDefault: false,
 };
 
 /**
- * Address editor with live Indian PIN code lookup.
- * As soon as 6 digits are typed we hit /api/pincode/:pin which proxies
- * India Post's api.postalpincode.in and auto-fills district/state and
- * offers the list of post offices as the "city / locality" choice.
+ * Address editor wired to India Post data (api.postalpincode.in, the API behind
+ * postalpincode.in).
+ *
+ * Typing a 6-digit PIN fetches EVERY post office / locality that shares that PIN and
+ * offers them as a dropdown, so the customer picks their exact area instead of typing
+ * it — district and state are filled automatically and locked to the official record.
+ *
+ * There is also a reverse lookup: type an area name (e.g. "Danavaipeta") and we find
+ * the matching PIN codes for them.
  */
 export default function AddressForm({ initial, onSave, onCancel, saving }) {
-  const [form, setForm] = useState({ ...blank, ...(initial || {}) });
-  const [pinState, setPinState] = useState({ status: 'idle', message: '', offices: [], source: '' });
+  // Older saved addresses only carry `city`; treat it as the locality when editing.
+  const [form, setForm] = useState(() => {
+    const base = { ...blank, ...(initial || {}) };
+    if (!base.locality) base.locality = base.city || '';
+    return base;
+  });
+  const [pin, setPin] = useState({ status: 'idle', message: '', data: null });
   const [error, setError] = useState('');
-  const reqId = useRef(0);
+
+  // reverse (area name -> pincode) lookup
+  const [areaQuery, setAreaQuery] = useState('');
+  const [areaState, setAreaState] = useState({ status: 'idle', results: [] });
+  const [showAreaSearch, setShowAreaSearch] = useState(false);
+
+  const pinReq = useRef(0);
+  const areaReq = useRef(0);
 
   const set = (k) => (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
     setForm((f) => ({ ...f, [k]: value }));
   };
 
-  const pin = form.pincode;
+  const pincode = form.pincode;
 
+  /* ------------------------------- PIN -> localities ------------------------------ */
   useEffect(() => {
-    if (!/^\d{6}$/.test(pin)) {
-      setPinState({
-        status: pin.length ? 'typing' : 'idle',
-        message: pin.length ? `${6 - pin.length} more digit(s)` : '',
-        offices: [],
-        source: '',
+    if (!/^\d{6}$/.test(pincode)) {
+      setPin({
+        status: pincode.length ? 'typing' : 'idle',
+        message: pincode.length ? `${6 - pincode.length} more digit(s)` : '',
+        data: null,
       });
       return;
     }
-    const id = ++reqId.current;
-    setPinState({ status: 'loading', message: 'Checking with India Post…', offices: [], source: '' });
+
+    const id = ++pinReq.current;
+    setPin({ status: 'loading', message: 'Looking up India Post records…', data: null });
+
     const t = setTimeout(() => {
       api
-        .pincode(pin)
+        .pincode(pincode)
         .then((d) => {
-          if (id !== reqId.current) return;
-          setPinState({
-            status: 'ok',
-            message: `${d.district}, ${d.state}`,
-            offices: d.offices || [],
-            source: d.source,
+          if (id !== pinReq.current) return;
+          setPin({ status: 'ok', message: '', data: d });
+          setForm((f) => {
+            // keep the locality if it still belongs to this PIN, else default to the
+            // delivery/head post office (first in the sorted list).
+            const stillValid = d.localities.includes(f.locality);
+            return {
+              ...f,
+              district: d.district || f.district,
+              state: d.state || f.state,
+              city: d.city || f.city,
+              locality: stillValid ? f.locality : d.localities[0] || '',
+            };
           });
-          setForm((f) => ({
-            ...f,
-            district: d.district || f.district,
-            state: d.state || f.state,
-            city: f.city || d.offices?.[0]?.name || d.city || '',
-          }));
         })
         .catch((e) => {
-          if (id !== reqId.current) return;
-          setPinState({ status: 'err', message: e.message, offices: [], source: '' });
+          if (id !== pinReq.current) return;
+          setPin({ status: 'err', message: e.message, data: null });
         });
     }, 350);
+
     return () => clearTimeout(t);
-  }, [pin]);
+  }, [pincode]);
+
+  /* ------------------------------ area name -> PIN ------------------------------- */
+  useEffect(() => {
+    if (areaQuery.trim().length < 3) {
+      setAreaState({ status: 'idle', results: [] });
+      return;
+    }
+    const id = ++areaReq.current;
+    setAreaState({ status: 'loading', results: [] });
+    const t = setTimeout(() => {
+      api
+        .postOffice(areaQuery.trim())
+        .then((d) => {
+          if (id !== areaReq.current) return;
+          setAreaState({ status: 'ok', results: d.results });
+        })
+        .catch((e) => {
+          if (id !== areaReq.current) return;
+          setAreaState({ status: 'err', results: [], message: e.message });
+        });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [areaQuery]);
+
+  const pickArea = (o) => {
+    setForm((f) => ({
+      ...f,
+      pincode: o.pincode,
+      locality: o.name,
+      district: o.district,
+      state: o.state,
+      city: o.block || o.district,
+    }));
+    setShowAreaSearch(false);
+    setAreaQuery('');
+    setAreaState({ status: 'idle', results: [] });
+  };
 
   const submit = (e) => {
     e.preventDefault();
     setError('');
-    const missing = ['name', 'phone', 'line1', 'pincode', 'city', 'state'].filter((f) => !form[f]);
+    const required = ['name', 'phone', 'line1', 'pincode', 'locality', 'state'];
+    const missing = required.filter((f) => !String(form[f] || '').trim());
     if (missing.length) return setError(`Please fill: ${missing.join(', ')}`);
     if (!/^\d{6}$/.test(form.pincode)) return setError('PIN code must be exactly 6 digits');
     if (!/^\d{10}$/.test(String(form.phone).replace(/\D/g, '').slice(-10)))
       return setError('Enter a valid 10-digit mobile number');
-    onSave(form);
+    // `city` is what the rest of the app displays — keep it in sync with the locality.
+    onSave({ ...form, city: form.locality || form.city });
   };
+
+  const data = pin.data;
 
   return (
     <form className="stack gap-14" onSubmit={submit}>
@@ -103,7 +166,13 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
 
       <div className="field">
         <label>Mobile number *</label>
-        <input className="input" value={form.phone} onChange={set('phone')} placeholder="9000012345" inputMode="numeric" maxLength={10} />
+        <input
+          className="input"
+          value={form.phone}
+          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+          placeholder="9000012345"
+          inputMode="numeric"
+        />
       </div>
 
       <div className="field">
@@ -116,54 +185,124 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
         <input className="input" value={form.line2} onChange={set('line2')} placeholder="Near Gowtami Ghat" />
       </div>
 
-      <div className="grid-2">
-        <div className="field">
-          <label>PIN code * <span className="muted tiny">(India Post verified)</span></label>
-          <input
-            className="input"
-            value={form.pincode}
-            onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-            placeholder="533101"
-            inputMode="numeric"
-            maxLength={6}
-          />
-          {pinState.status === 'loading' && <span className="pin-hint load">Checking with India Post…</span>}
-          {pinState.status === 'typing' && <span className="pin-hint load">{pinState.message}</span>}
-          {pinState.status === 'ok' && (
-            <span className="pin-hint ok">
-              <Icon.Check width={13} height={13} /> {pinState.message}
-              {pinState.source === 'offline-fallback' ? ' (cached)' : ''}
-            </span>
-          )}
-          {pinState.status === 'err' && <span className="pin-hint err">{pinState.message}</span>}
+      {/* ------------------------------ PIN + locality ------------------------------ */}
+      <div className="pin-block">
+        <div className="row gap-8" style={{ marginBottom: 10 }}>
+          <Icon.Pin width={15} height={15} style={{ color: 'var(--maroon)' }} />
+          <strong className="small">Delivery location</strong>
+          <span className="badge badge-ghost">India Post verified</span>
+          <div className="spacer" />
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={() => setShowAreaSearch((s) => !s)}
+          >
+            {showAreaSearch ? 'Close' : "Don't know your PIN?"}
+          </button>
         </div>
 
-        <div className="field">
-          <label>City / Locality *</label>
-          {pinState.offices.length > 0 ? (
-            <select className="select" value={form.city} onChange={set('city')}>
-              <option value="">Select post office…</option>
-              {pinState.offices.map((o) => (
-                <option key={o.name} value={o.name}>
-                  {o.name} {o.branchType ? `· ${o.branchType}` : ''}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input className="input" value={form.city} onChange={set('city')} placeholder="Rajahmundry" />
-          )}
-        </div>
-      </div>
+        {showAreaSearch && (
+          <div className="area-search">
+            <div className="field">
+              <label>Search your area / post office</label>
+              <input
+                className="input"
+                value={areaQuery}
+                onChange={(e) => setAreaQuery(e.target.value)}
+                placeholder="e.g. Danavaipeta, Gachibowli, Sowcarpet"
+                autoFocus
+              />
+            </div>
+            {areaState.status === 'loading' && <p className="pin-hint load">Searching India Post…</p>}
+            {areaState.status === 'err' && <p className="pin-hint err">{areaState.message}</p>}
+            {areaState.status === 'ok' && (
+              <div className="area-results">
+                {areaState.results.map((o, i) => (
+                  <button type="button" key={`${o.pincode}-${o.name}-${i}`} className="area-hit" onClick={() => pickArea(o)}>
+                    <span className="stack gap-2" style={{ alignItems: 'flex-start' }}>
+                      <b className="small">{o.name}</b>
+                      <span className="tiny muted">{o.district}, {o.state}</span>
+                    </span>
+                    <span className="badge badge-gold">{o.pincode}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      <div className="grid-2">
-        <div className="field">
-          <label>District</label>
-          <input className="input" value={form.district} onChange={set('district')} placeholder="East Godavari" />
+        <div className="grid-2">
+          <div className="field">
+            <label>PIN code *</label>
+            <input
+              className="input"
+              value={form.pincode}
+              onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+              placeholder="533101"
+              inputMode="numeric"
+            />
+            {pin.status === 'loading' && <span className="pin-hint load">Looking up India Post records…</span>}
+            {pin.status === 'typing' && <span className="pin-hint load">{pin.message}</span>}
+            {pin.status === 'err' && <span className="pin-hint err">{pin.message}</span>}
+            {pin.status === 'ok' && data && (
+              <span className="pin-hint ok">
+                <Icon.Check width={13} height={13} />
+                {data.count} {data.count === 1 ? 'area' : 'areas'} found
+                {data.source === 'offline-snapshot' ? ' (offline copy)' : ''}
+              </span>
+            )}
+          </div>
+
+          <div className="field">
+            <label>City / Locality *</label>
+            {data?.offices?.length ? (
+              <select
+                className="select"
+                value={form.locality}
+                onChange={(e) => setForm((f) => ({ ...f, locality: e.target.value }))}
+              >
+                {data.offices.map((o) => (
+                  <option key={o.name} value={o.name}>
+                    {o.name}
+                    {/^delivery$/i.test(o.delivery) ? ' ✓ delivery' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="input"
+                value={form.locality}
+                onChange={set('locality')}
+                placeholder="Enter a PIN code first"
+              />
+            )}
+            {data?.offices?.length > 1 && (
+              <span className="tiny muted">{data.count} localities share PIN {data.pincode} — pick yours.</span>
+            )}
+          </div>
         </div>
-        <div className="field">
-          <label>State *</label>
-          <input className="input" value={form.state} onChange={set('state')} placeholder="Andhra Pradesh" />
+
+        <div className="grid-2" style={{ marginTop: 14 }}>
+          <div className="field">
+            <label>District {data && <span className="tiny muted">(auto-filled)</span>}</label>
+            <input className="input" value={form.district} onChange={set('district')} placeholder="East Godavari" readOnly={!!data} />
+          </div>
+          <div className="field">
+            <label>State * {data && <span className="tiny muted">(auto-filled)</span>}</label>
+            <input className="input" value={form.state} onChange={set('state')} placeholder="Andhra Pradesh" readOnly={!!data} />
+          </div>
         </div>
+
+        {data && !data.deliverable && (
+          <div className="alert alert-err tiny" style={{ marginTop: 12 }}>
+            India Post lists no delivery office for this PIN — please double-check it.
+          </div>
+        )}
+        {data?.division && (
+          <p className="tiny muted" style={{ marginTop: 10 }}>
+            Postal division: {data.division}{data.circle ? ` · ${data.circle} circle` : ''}
+          </p>
+        )}
       </div>
 
       <div className="field">

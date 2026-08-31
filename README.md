@@ -48,12 +48,31 @@ Admin sign-in lives at `/login?role=admin` and rejects non-admin accounts.
 - **Multiple addresses** — add / edit / delete, labels (Home, Work, Parents, Other), set default
 - Address switching at checkout
 
-**Indian PIN code lookup**
-- `GET /api/pincode/:pin` proxies **https://api.postalpincode.in/pincode/{PIN}** (India Post)
-- Typing 6 digits auto-fills district and state and lists the post offices for that PIN as the
-  city/locality dropdown; results are cached in memory
-- If the host has no outbound internet, a bundled offline table (`server/data/seed.js`)
-  answers common PINs and the UI marks the result as cached, so the flow never dead-ends
+**Indian PIN code + locality lookup**
+
+Data comes from **`https://api.postalpincode.in`** — the JSON API behind
+[postalpincode.in](http://www.postalpincode.in/), which serves official India Post records.
+
+- `GET /api/pincode/:pin` — returns **every post office / locality that shares the PIN**, not
+  just one. PIN 533101 resolves to 6 areas (Rajahmundry, Alcot Gardens, Fort Gate, Ramakrishna
+  Nagar, Syamalamba Temple, Vullithota); 560001 resolves to 10.
+- Typing 6 digits fills **district and state automatically** (read-only, locked to the official
+  record) and turns *City / Locality* into a dropdown of all areas under that PIN, so the
+  customer picks their exact area instead of typing it. Delivery/head offices are sorted first
+  and tagged `✓ delivery`.
+- `GET /api/postoffice/:name` — **reverse lookup**. The "Don't know your PIN?" link lets a
+  customer search an area name (e.g. *Danavaipeta* → 533103) and one click fills PIN, locality,
+  district and state.
+- Results are cached in memory for 24 h, names are normalised (India Post returns stray
+  whitespace and `"NA"` placeholders), and a PIN with no delivery office is flagged in the UI.
+- **Three-tier resolution** so the flow never dead-ends: server cache → live India Post API →
+  bundled offline snapshot (`server/data/pincodes.js`, captured from the real API). If the
+  *server* has no outbound internet but the browser does, the client retries
+  api.postalpincode.in directly (it sends permissive CORS headers). The UI labels
+  offline-snapshot results so the data source is never ambiguous.
+
+Addresses store the chosen area as `locality`, mirrored into `city` so orders, invoices and the
+admin views keep working; payloads that only send `city` are still accepted.
 
 **Admin dashboard** (`/admin`)
 - KPIs: revenue, orders, average order value, customers, product count, low-stock variants
@@ -76,7 +95,8 @@ Admin sign-in lives at `/login?role=admin` and rejects non-admin accounts.
 | GET/POST | `/api/addresses` | user | List / add address |
 | PUT/DELETE | `/api/addresses/:id` | user | Edit / remove address |
 | PATCH | `/api/addresses/:id/default` | user | Set default address |
-| GET | `/api/pincode/:pin` | – | India Post PIN lookup |
+| GET | `/api/pincode/:pin` | – | All localities served by a PIN (India Post) |
+| GET | `/api/postoffice/:name` | – | Reverse lookup: area name → PIN codes |
 | POST | `/api/cart/quote` | – | Server-side cart pricing |
 | POST/GET | `/api/orders` | user | Place / list orders |
 | PATCH | `/api/orders/:id/status` | admin | Change order status |

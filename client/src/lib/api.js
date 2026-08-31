@@ -28,6 +28,95 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
+/* ---------------------------------------------------------------------------
+ * India Post lookups.
+ *
+ * Primary path: our own /api proxy (keeps one origin, caches, and works even if
+ * the browser is offline-restricted). If the server itself has no outbound
+ * internet — e.g. a locked-down container — we retry straight from the browser
+ * against api.postalpincode.in, which does send permissive CORS headers.
+ * ------------------------------------------------------------------------- */
+const POSTAL_API = 'https://api.postalpincode.in';
+
+const cleanValue = (v) => {
+  const s = String(v ?? '').trim();
+  return !s || s.toUpperCase() === 'NA' ? '' : s;
+};
+
+const shapeOffice = (o, pincode) => ({
+  name: cleanValue(o.Name),
+  branchType: cleanValue(o.BranchType),
+  delivery: cleanValue(o.DeliveryStatus),
+  district: cleanValue(o.District),
+  division: cleanValue(o.Division),
+  block: cleanValue(o.Block),
+  state: cleanValue(o.State),
+  circle: cleanValue(o.Circle),
+  pincode: cleanValue(o.Pincode) || pincode,
+});
+
+const isDelivery = (o) => /^delivery$/i.test(o.delivery);
+
+async function postalFetch(url) {
+  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`India Post responded ${res.status}`);
+  const json = await res.json();
+  const entry = Array.isArray(json) ? json[0] : null;
+  if (entry?.Status !== 'Success' || !entry.PostOffice?.length) return null;
+  return entry.PostOffice;
+}
+
+async function directPincode(pin) {
+  const raw = await postalFetch(`${POSTAL_API}/pincode/${pin}`);
+  if (!raw) throw new Error(`No India Post records found for PIN ${pin}.`);
+
+  const offices = raw
+    .map((o) => shapeOffice(o, pin))
+    .filter((o) => o.name)
+    .sort((a, b) => {
+      const d = Number(isDelivery(b)) - Number(isDelivery(a));
+      if (d) return d;
+      const h = Number(/head/i.test(b.branchType)) - Number(/head/i.test(a.branchType));
+      if (h) return h;
+      return a.name.localeCompare(b.name);
+    });
+
+  const primary = offices[0];
+  return {
+    pincode: pin,
+    city: primary.block || primary.district,
+    district: primary.district,
+    state: primary.state,
+    division: primary.division,
+    circle: primary.circle,
+    offices,
+    localities: offices.map((o) => o.name),
+    deliverable: offices.some(isDelivery),
+    count: offices.length,
+    source: 'api.postalpincode.in',
+  };
+}
+
+async function directPostOffice(name) {
+  const raw = await postalFetch(`${POSTAL_API}/postoffice/${encodeURIComponent(name)}`);
+  if (!raw) throw new Error(`No post office matched "${name}"`);
+  const results = raw.map((o) => shapeOffice(o)).filter((o) => o.name && o.pincode);
+  return { query: name, count: results.length, results: results.slice(0, 25), source: 'api.postalpincode.in' };
+}
+
+// Try our proxy first; on network/5xx/404-style failure, ask India Post directly.
+async function withDirectFallback(viaProxy, direct) {
+  try {
+    return await viaProxy();
+  } catch (proxyError) {
+    try {
+      return await direct();
+    } catch {
+      throw proxyError;
+    }
+  }
+}
+
 export const api = {
   // auth
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),
@@ -53,8 +142,15 @@ export const api = {
   makeDefaultAddress: (id) => request(`/addresses/${id}/default`, { method: 'PATCH' }),
   deleteAddress: (id) => request(`/addresses/${id}`, { method: 'DELETE' }),
 
-  // India Post PIN lookup (server proxies api.postalpincode.in)
-  pincode: (pin) => request(`/pincode/${pin}`, { auth: false }),
+  // India Post lookups — the server proxies api.postalpincode.in (postalpincode.in)
+  // and returns every post office / locality sharing the PIN.
+  pincode: (pin) => withDirectFallback(() => request(`/pincode/${pin}`, { auth: false }), () => directPincode(pin)),
+  // Reverse lookup: area / post office name -> matching PIN codes
+  postOffice: (name) =>
+    withDirectFallback(
+      () => request(`/postoffice/${encodeURIComponent(name)}`, { auth: false }),
+      () => directPostOffice(name)
+    ),
 
   // cart + orders
   quote: (items, coupon) => request('/cart/quote', { method: 'POST', body: { items, coupon }, auth: false }),

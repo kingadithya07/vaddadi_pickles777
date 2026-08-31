@@ -146,22 +146,3 @@ export const products = [
     variants: variants(449, 849, 1599, 18),
   },
 ];
-
-// Offline fallback used only when api.postalpincode.in is unreachable
-// (for example when the server has no outbound internet access).
-export const pincodeFallback = {
-  533101: { office: 'Rajahmundry H.O', district: 'East Godavari', state: 'Andhra Pradesh' },
-  533001: { office: 'Kakinada H.O', district: 'Kakinada', state: 'Andhra Pradesh' },
-  520001: { office: 'Vijayawada H.O', district: 'Krishna', state: 'Andhra Pradesh' },
-  530001: { office: 'Visakhapatnam H.O', district: 'Visakhapatnam', state: 'Andhra Pradesh' },
-  500001: { office: 'Hyderabad G.P.O.', district: 'Hyderabad', state: 'Telangana' },
-  500081: { office: 'Gachibowli', district: 'Hyderabad', state: 'Telangana' },
-  560001: { office: 'Bangalore G.P.O.', district: 'Bengaluru', state: 'Karnataka' },
-  600001: { office: 'Chennai G.P.O.', district: 'Chennai', state: 'Tamil Nadu' },
-  400001: { office: 'Mumbai G.P.O.', district: 'Mumbai', state: 'Maharashtra' },
-  110001: { office: 'New Delhi G.P.O.', district: 'Central Delhi', state: 'Delhi' },
-  700001: { office: 'Kolkata G.P.O.', district: 'Kolkata', state: 'West Bengal' },
-  380001: { office: 'Ahmedabad H.O', district: 'Ahmedabad', state: 'Gujarat' },
-  411001: { office: 'Pune H.O', district: 'Pune', state: 'Maharashtra' },
-  682001: { office: 'Ernakulam H.O', district: 'Ernakulam', state: 'Kerala' },
-};
