@@ -16,10 +16,14 @@ function Navbar() {
           <img
             className="brand-logo"
             src="/brand/vaddadi-mark.png"
-            alt="Vaddadi Pickles — Sujathanagar, Visakhapatnam"
+            alt=""
             width="211"
             height="220"
           />
+          <span className="brand-word">
+            <span className="brand-name">Vaddadi&nbsp;Pickles</span>
+            <span className="brand-tag">Sujathanagar · Visakhapatnam</span>
+          </span>
         </Link>
 
         <nav className={`nav-links ${open ? 'open' : ''}`}>
