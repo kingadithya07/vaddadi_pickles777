@@ -174,7 +174,7 @@ export default function Checkout() {
             </section>
           </div>
 
-          <aside className="card card-pad stack gap-14" style={{ position: 'sticky', top: 86 }}>
+          <aside className="card card-pad stack gap-14" style={{ position: 'sticky', top: 94 }}>
             <h3 style={{ fontSize: 19 }}>Order summary</h3>
 
             <div className="stack gap-10">

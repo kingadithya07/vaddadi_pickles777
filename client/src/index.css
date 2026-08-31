@@ -110,14 +110,12 @@ img { display: block; max-width: 100%; }
   position: sticky; top: 0; z-index: 60; background: rgba(253, 248, 239, .92);
   backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
 }
-.nav-inner { display: flex; align-items: center; gap: 18px; height: 66px; }
+.nav-inner { display: flex; align-items: center; gap: 18px; height: 74px; }
 .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.brand-logo { height: 46px; width: auto; object-fit: contain; display: block; transition: transform .16s ease; }
-.brand:hover .brand-logo { transform: scale(1.03); }
-.footer-logo {
-  width: 100%; max-width: 230px; height: auto; display: block;
-  background: #fff; border-radius: 14px; padding: 10px;
-}
+/* Full logo badge, transparent PNG — sits directly on the nav/footer background */
+.brand-logo { height: 54px; width: auto; object-fit: contain; display: block; transition: transform .16s ease; }
+.brand:hover .brand-logo { transform: scale(1.04); }
+.footer-logo { width: 100%; max-width: 260px; height: auto; display: block; }
 .nav-links { display: flex; align-items: center; gap: 4px; }
 .nav-link { padding: 8px 13px; border-radius: 999px; font-size: 14px; font-weight: 500; color: var(--ink-soft); }
 .nav-link:hover { background: var(--cream-2); color: var(--ink); }
@@ -228,7 +226,7 @@ img { display: block; max-width: 100%; }
 .chip.active { background: var(--maroon); color: #fff; border-color: var(--maroon); }
 
 /* auth */
-.auth-wrap { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 66px); }
+.auth-wrap { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 74px); }
 .auth-art { background: linear-gradient(160deg, #7a1f12, #45100b); color: #fff; padding: 56px; display: flex; flex-direction: column; justify-content: center; gap: 18px; }
 .auth-art h2 { font-size: 36px; font-weight: 900; }
 .auth-art li { color: #f0d9c9; margin-bottom: 10px; font-size: 14.5px; }
@@ -241,7 +239,7 @@ img { display: block; max-width: 100%; }
 
 /* dashboards */
 .dash { display: grid; grid-template-columns: 232px 1fr; gap: 26px; align-items: start; }
-.side { position: sticky; top: 86px; display: flex; flex-direction: column; gap: 4px; padding: 14px; }
+.side { position: sticky; top: 94px; display: flex; flex-direction: column; gap: 4px; padding: 14px; }
 .side button {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent;
   padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
@@ -362,9 +360,9 @@ table.tbl tbody tr:hover { background: #fffdf8; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 720px) {
-  .brand-logo { height: 38px; }
+  .brand-logo { height: 44px; }
   .nav-inner { gap: 10px; }
-  .nav-links { position: absolute; top: 66px; left: 0; right: 0; background: var(--cream); border-bottom: 1px solid var(--line); flex-direction: column; align-items: stretch; padding: 10px; gap: 4px; display: none; box-shadow: var(--shadow); }
+  .nav-links { position: absolute; top: 74px; left: 0; right: 0; background: var(--cream); border-bottom: 1px solid var(--line); flex-direction: column; align-items: stretch; padding: 10px; gap: 4px; display: none; box-shadow: var(--shadow); }
   .nav-links.open { display: flex; }
   .nav-toggle { display: grid; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }

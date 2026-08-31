@@ -16,9 +16,9 @@ function Navbar() {
           <img
             className="brand-logo"
             src="/brand/vaddadi-mark.png"
-            alt="Vaddadi Pickles"
-            width="150"
-            height="48"
+            alt="Vaddadi Pickles — Sujathanagar, Visakhapatnam"
+            width="211"
+            height="220"
           />
         </Link>
 
@@ -88,8 +88,8 @@ function Footer() {
               className="footer-logo"
               src="/brand/vaddadi-logo.png"
               alt="Vaddadi Pickles — Sujathanagar, Visakhapatnam"
-              width="240"
-              height="240"
+              width="560"
+              height="583"
               loading="lazy"
             />
             <p className="small" style={{ lineHeight: 1.75, marginTop: 14 }}>
