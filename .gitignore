@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# runtime datastore (regenerated from the seed on first boot)
+server/data/db.json
+
+.DS_Store
+.vscode/
+.idea/
