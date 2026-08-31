@@ -76,10 +76,15 @@ async function directPincode(pin) {
     .sort((a, b) => {
       const d = Number(isDelivery(b)) - Number(isDelivery(a));
       if (d) return d;
-      // "Head Post Office" only — not "Branch Office directly a/w Head Office",
-      // which can sit in a different district (e.g. Elephanta Caves under 400001).
-      const isHead = (o) => /^head post office$/i.test(o.branchType);
-      const h = Number(isHead(b)) - Number(isHead(a));
+      // Rank by office tier: Head > Sub > Branch. Note "Branch Office directly a/w
+      // Head Office" must NOT count as a head office — it can sit in a different
+      // district (e.g. Elephanta Caves under PIN 400001).
+      const tier = (o) => {
+        if (/^head post office$/i.test(o.branchType)) return 3;
+        if (/^sub post office$/i.test(o.branchType)) return 2;
+        return 1;
+      };
+      const h = tier(b) - tier(a);
       if (h) return h;
       return a.name.localeCompare(b.name);
     });
