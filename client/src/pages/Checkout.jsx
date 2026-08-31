@@ -143,6 +143,7 @@ export default function Checkout() {
                       <span className="small muted" style={{ lineHeight: 1.55 }}>
                         {a.line1}{a.line2 ? `, ${a.line2}` : ''}<br />
                         {a.city}, {a.district}<br />
+                        {a.division ? <>Sub division: {a.division}<br /></> : null}
                         {a.state} — <b>{a.pincode}</b>
                       </span>
                     </div>

@@ -80,6 +80,7 @@ export default function OrderDetail() {
               {order.address.line1}{order.address.line2 ? `, ${order.address.line2}` : ''}<br />
               {order.address.landmark ? <>Landmark: {order.address.landmark}<br /></> : null}
               {order.address.city}{order.address.district ? `, ${order.address.district}` : ''}<br />
+              {order.address.division ? <>Sub division: {order.address.division}<br /></> : null}
               {order.address.state} — <b>{order.address.pincode}</b><br />
               📞 {order.address.phone}
             </span>

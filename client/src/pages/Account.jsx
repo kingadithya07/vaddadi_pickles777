@@ -24,6 +24,7 @@ function AddressCard({ a, onEdit, onDelete, onDefault }) {
         {a.line1}{a.line2 ? `, ${a.line2}` : ''}
         {a.landmark ? <><br />Landmark: {a.landmark}</> : null}
         <br />{a.city}{a.district ? `, ${a.district}` : ''}
+        {a.division ? <><br /><span className="tiny">Sub division: {a.division}</span></> : null}
         <br />{a.state} — <b>{a.pincode}</b>
         <br />📞 {a.phone}
       </span>

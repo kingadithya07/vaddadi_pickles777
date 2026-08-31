@@ -13,6 +13,8 @@ const blank = {
   city: '',
   locality: '',
   district: '',
+  division: '',
+  circle: '',
   state: '',
   isDefault: false,
 };
@@ -77,12 +79,18 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
             // keep the locality if it still belongs to this PIN, else default to the
             // delivery/head post office (first in the sorted list).
             const stillValid = d.localities.includes(f.locality);
+            const locality = stillValid ? f.locality : d.localities[0] || '';
+            // District and sub division are per post office, so read them off the
+            // selected locality rather than the PIN's primary office.
+            const office = d.offices.find((o) => o.name === locality);
             return {
               ...f,
-              district: d.district || f.district,
-              state: d.state || f.state,
+              locality,
               city: d.city || f.city,
-              locality: stillValid ? f.locality : d.localities[0] || '',
+              district: office?.district || d.district || f.district,
+              division: office?.division || d.division || '',
+              circle: office?.circle || d.circle || '',
+              state: office?.state || d.state || f.state,
             };
           });
         })
@@ -118,12 +126,31 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
     return () => clearTimeout(t);
   }, [areaQuery]);
 
+  // Selecting a locality re-syncs district / sub division / state, since offices
+  // under one PIN can sit in different divisions (and occasionally districts).
+  const selectLocality = (name) => {
+    setForm((f) => {
+      const office = pin.data?.offices.find((o) => o.name === name);
+      if (!office) return { ...f, locality: name };
+      return {
+        ...f,
+        locality: name,
+        district: office.district || f.district,
+        division: office.division || f.division,
+        circle: office.circle || f.circle,
+        state: office.state || f.state,
+      };
+    });
+  };
+
   const pickArea = (o) => {
     setForm((f) => ({
       ...f,
       pincode: o.pincode,
       locality: o.name,
       district: o.district,
+      division: o.division,
+      circle: o.circle,
       state: o.state,
       city: o.block || o.district,
     }));
@@ -259,7 +286,7 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
               <select
                 className="select"
                 value={form.locality}
-                onChange={(e) => setForm((f) => ({ ...f, locality: e.target.value }))}
+                onChange={(e) => selectLocality(e.target.value)}
               >
                 {data.offices.map((o) => (
                   <option key={o.name} value={o.name}>
@@ -282,13 +309,17 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
           </div>
         </div>
 
-        <div className="grid-2" style={{ marginTop: 14 }}>
+        <div className="grid-3" style={{ marginTop: 14 }}>
           <div className="field">
-            <label>District {data && <span className="tiny muted">(auto-filled)</span>}</label>
+            <label>District {data && <span className="tiny muted">(auto)</span>}</label>
             <input className="input" value={form.district} onChange={set('district')} placeholder="East Godavari" readOnly={!!data} />
           </div>
           <div className="field">
-            <label>State * {data && <span className="tiny muted">(auto-filled)</span>}</label>
+            <label>Sub postal division {data && <span className="tiny muted">(auto)</span>}</label>
+            <input className="input" value={form.division} onChange={set('division')} placeholder="Rajahmundry" readOnly={!!data} />
+          </div>
+          <div className="field">
+            <label>State * {data && <span className="tiny muted">(auto)</span>}</label>
             <input className="input" value={form.state} onChange={set('state')} placeholder="Andhra Pradesh" readOnly={!!data} />
           </div>
         </div>
@@ -298,9 +329,9 @@ export default function AddressForm({ initial, onSave, onCancel, saving }) {
             India Post lists no delivery office for this PIN — please double-check it.
           </div>
         )}
-        {data?.division && (
+        {form.circle && (
           <p className="tiny muted" style={{ marginTop: 10 }}>
-            Postal division: {data.division}{data.circle ? ` · ${data.circle} circle` : ''}
+            Postal circle: {form.circle}
           </p>
         )}
       </div>

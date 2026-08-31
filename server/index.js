@@ -198,6 +198,9 @@ function normaliseAddress(body) {
     locality,
     city: locality,
     district: body.district || '',
+    // sub postal division / circle as recorded by India Post for this locality
+    division: body.division || '',
+    circle: body.circle || '',
     state: body.state || '',
   };
 }
@@ -307,7 +310,10 @@ function buildPayload(pin, rawOffices, source) {
     .sort((a, b) => {
       const d = Number(isDelivery(b)) - Number(isDelivery(a));
       if (d) return d;
-      const h = Number(/head/i.test(b.branchType)) - Number(/head/i.test(a.branchType));
+      // "Head Post Office" only — not "Branch Office directly a/w Head Office",
+      // which can sit in a different district (e.g. Elephanta Caves under 400001).
+      const isHead = (o) => /^head post office$/i.test(o.branchType);
+      const h = Number(isHead(b)) - Number(isHead(a));
       if (h) return h;
       return a.name.localeCompare(b.name);
     });

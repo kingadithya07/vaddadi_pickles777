@@ -331,7 +331,11 @@ export default function Admin() {
                                 </div>
                               ))}
                             </td>
-                            <td className="tiny">{o.address.city}, {o.address.state}<br /><b>{o.address.pincode}</b></td>
+                            <td className="tiny">
+                              {o.address.city}, {o.address.state}<br />
+                              {o.address.division ? <>Div: {o.address.division}<br /></> : null}
+                              <b>{o.address.pincode}</b>
+                            </td>
                             <td><b>{inr(o.total)}</b><br /><span className="tiny muted">{o.paymentMethod}</span></td>
                             <td><span className={`status ${o.status}`}>{o.status}</span></td>
                             <td>
@@ -413,7 +417,10 @@ export default function Admin() {
                           <td className="small">{c.email}<br /><span className="tiny muted">{c.phone || '—'}</span></td>
                           <td className="tiny">
                             {c.addresses.length === 0 ? '—' : c.addresses.map((a) => (
-                              <div key={a.id}>{a.label}: {a.city} — {a.pincode}</div>
+                              <div key={a.id}>
+                                {a.label}: {a.city} — {a.pincode}
+                                {a.division ? <span className="muted"> ({a.division})</span> : null}
+                              </div>
                             ))}
                           </td>
                           <td>{c.orderCount}</td>

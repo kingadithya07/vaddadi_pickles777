@@ -56,10 +56,15 @@ Data comes from **`https://api.postalpincode.in`** — the JSON API behind
 - `GET /api/pincode/:pin` — returns **every post office / locality that shares the PIN**, not
   just one. PIN 533101 resolves to 6 areas (Rajahmundry, Alcot Gardens, Fort Gate, Ramakrishna
   Nagar, Syamalamba Temple, Vullithota); 560001 resolves to 10.
-- Typing 6 digits fills **district and state automatically** (read-only, locked to the official
-  record) and turns *City / Locality* into a dropdown of all areas under that PIN, so the
-  customer picks their exact area instead of typing it. Delivery/head offices are sorted first
-  and tagged `✓ delivery`.
+- Typing 6 digits fills **district, sub postal division and state automatically** (read-only,
+  locked to the official record) and turns *City / Locality* into a dropdown of all areas under
+  that PIN, so the customer picks their exact area instead of typing it. Delivery/head offices
+  are sorted first and tagged `✓ delivery`.
+- District and division are resolved **per selected locality**, not per PIN — offices sharing a
+  PIN can belong to different divisions (400001 → *Mumbai G.P.O.* for Mumbai HO but *Mumbai
+  South* for Bazargate) and occasionally different districts. Changing the locality dropdown
+  re-syncs all three fields. The division is stored on the address and shown in the customer
+  dashboard, checkout, order detail and the admin order/customer tables for dispatch routing.
 - `GET /api/postoffice/:name` — **reverse lookup**. The "Don't know your PIN?" link lets a
   customer search an area name (e.g. *Danavaipeta* → 533103) and one click fills PIN, locality,
   district and state.
